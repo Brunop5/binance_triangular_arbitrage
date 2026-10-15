@@ -1,0 +1,12 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+exclude = ["archive", ".venv"]
+respect-gitignore = true
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

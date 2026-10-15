@@ -1,0 +1,34 @@
+# Secrets and local credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*private*
+id_rsa*
+id_ed25519*
+
+# Local strategy config (commit only config.example.json)
+config.json
+
+# Runtime / tooling
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.DS_Store
+
+# Generated paper-run outputs (keep committed samples)
+results/*
+!results/sample/
+!results/sample/**
+
+# Editor
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,2 @@
+opportunity_id,route,started_at_utc,ended_at_utc,duration_ms,end_reason,samples,start_gross_ratio,start_fee_adjusted_ratio,max_gross_ratio,max_fee_adjusted_ratio,max_executable_ratio,bot_executable_at_least_once
+803e439522a2404b81a454850c9256d3,BTC-IDR-TAO-BTC,2026-08-28T07:07:42.730404+00:00,2026-08-28T07:07:42.832185+00:00,101.774,ratio_closed,1,1.00432777171173,1.00206972860479,1.00432777171173,1.00206972860479,0.999150075,False

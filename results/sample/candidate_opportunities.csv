@@ -1,0 +1,2 @@
+audit_id,route,detected_at_utc,ended_at_utc,starting_anchor,gross_ratio,fee_adjusted_ratio,projected_pnl_anchor,immediate_output_anchor,immediate_pnl_anchor,delayed_output_anchor,delayed_pnl_anchor,flags
+803e439522a2404b81a454850c9256d3,BTC-IDR-TAO-BTC,2026-08-28T07:07:42.730613+00:00,2026-08-28T07:07:42.837996+00:00,0.000285,1.00432777171173,1.00206972860479,0.00000058987,0.000284762,-0.00000023798,0.2066499,0.2063649,DEPTH_ILLUSION|EXPIRED_BEFORE_ARRIVAL
