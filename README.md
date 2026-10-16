@@ -1,81 +1,78 @@
-# Sequential triangular-arbitrage paper demo
+# Triangular arbitrage paper simulator
 
-Paper-only experiment: synchronized Binance L2 books, fee-aware triangular
-(and short wrap) route quoting, sequential IOC **simulation**, inventory
-recovery, and CSV logging.
+A **paper-only** Binance spot demo that looks for triangular (and short
+multi-leg) cycles, prices them against live order-book depth, and simulates
+taking the path with sequential IOC-style fills. Nothing in the main program
+places real orders.
 
-**This is not a live trading bot, not financial advice, and not a claim of
-persistent alpha.** It is a systems + microstructure learning project suitable
-as a portfolio piece: show that you understand depth sync, fee drag, non-atomic
-multi-leg risk, and the gap between top-of-book “edges” and executable size.
+It accounts for taker fees, available depth, exchange size/price filters, and a
+configurable reaction latency. In practice, many cycles that look fine at the
+best bid/ask never clear those checks for long enough to finish.
 
-| | |
-| --- | --- |
-| Status | Paper simulation only — no order-placement client in the maintained path |
-| Venue | Binance spot (REST + authenticated SBE depth) |
-| License | [MIT](LICENSE) |
+## What it does
 
-If you previously exposed an API key (chat, screenshots, old commits): **revoke
-it in Binance API Management** and create a new market-data-only Ed25519 key.
+1. **Build a route set** from Binance REST (`exchangeInfo` + 24h volumes), either:
+   - **USDC mode** — quieter USDC alts (roughly volume-rank 70+), with BTC/ETH/BNB
+     only as bridges when needed; optional 4/5-leg wraps
+   - **Hub mode** — triangles among a small set of hubs (e.g. BTC/ETH/BNB/SOL)
+2. **Keep local L2 books** from Binance’s authenticated ~20 ms SBE depth stream,
+   bootstrapped with REST snapshots and checked for sequence gaps.
+3. **Score routes** after fees; for the best candidates, walk the book at demo
+   size (tick/lot/`Decimal` rounding).
+4. **Simulate the cycle** leg by leg. If a leg fails or the edge disappears while
+   holding inventory, try a **recovery** path back to the starting asset.
+5. **Log** console summaries and, on disk, CSVs under `results/` (local only;
+   see `results/sample/` for committed examples).
 
-## 30-second pitch
+More detail: [docs/design-notes.md](docs/design-notes.md) ·
+[docs/findings.md](docs/findings.md) ·
+[docs/limitations.md](docs/limitations.md)
 
-1. Discover a constrained universe of USDC or multi-hub cycles.
-2. Maintain sequence-checked local order books from Binance’s ~20 ms SBE depth
-   stream (REST snapshot bootstrap).
-3. Detect fee-adjusted top-of-book cycles; depth-quote the best candidates at
-   demo size with tick/lot/`Decimal` constraints.
-4. Simulate sequential taker IOC legs with latency; recover to the hub/anchor
-   if the path breaks.
-5. Log theoretical episodes, candidate shadow audits, and paper trades.
-
-Early paper evidence (see [docs/findings.md](docs/findings.md)): many
-fee-positive top-of-book flashes are short-lived and **not** executable at demo
-size; mega-connector triangles were effectively sterile under the fee/size
-assumptions used here.
-
-## Architecture
+## How the pieces fit
 
 ```mermaid
 flowchart LR
   subgraph discover [Discovery]
     CFG[config.json]
-    UNI[UniverseBuilder / HubUniverseBuilder]
-    RG[RouteGraph]
+    UNI[Universe builder]
+    RG[Route graph]
     CFG --> UNI --> RG
   end
   subgraph md [Market data]
-    SBE[SBE depth WS]
-    SNAP[REST depth snapshot]
+    SBE[SBE depth stream]
+    SNAP[REST snapshot]
     BOOKS[Local books]
     SBE --> BOOKS
     SNAP --> BOOKS
   end
   subgraph paper [Paper engine]
-    EVAL[Fee-aware quote + filters]
-    IOC[Simulated sequential IOC]
-    REC[Recovery routes]
-    CSV[results/*.csv]
-    BOOKS --> EVAL --> IOC --> REC --> CSV
+    EVAL[Quote + filters]
+    IOC[Simulated IOC legs]
+    REC[Recovery]
+    OUT[Console + results/]
+    BOOKS --> EVAL --> IOC --> REC --> OUT
   end
   RG --> EVAL
 ```
 
-| Module | Role |
+| Path | Role |
 | --- | --- |
-| `main.py` | Wire-up loop: discover → stream → paper run → daily rebuild |
-| `arbitrage/config.py` | Pydantic settings from `config.json`; API key from env only |
-| `arbitrage/universe.py` | USDC volume-ranked alt universe + bridges / wraps |
-| `arbitrage/hub_universe.py` | Multi-hub crypto–crypto triangles |
-| `arbitrage/route_graph.py` | Directed routes + recovery paths |
-| `arbitrage/market_data.py` | SBE decode, book sync, coalesce batches, health metrics |
-| `arbitrage/engine.py` | Strategy, quoting, episodes, recovery (no exchange orders) |
-| `arbitrage/demo.py` | Virtual IOC + CSV reporters |
-| `arbitrage/models.py` | Shared domain types |
+| `main.py` | Entry point: discover → stream → run → refresh universe |
+| `arbitrage/config.py` | Settings from `config.json`; API key from the environment |
+| `arbitrage/universe.py` | USDC volume-ranked universe |
+| `arbitrage/hub_universe.py` | Multi-hub triangle discovery |
+| `arbitrage/route_graph.py` | Directed routes and recovery paths |
+| `arbitrage/market_data.py` | SBE decode, book sync, batching, health checks |
+| `arbitrage/engine.py` | Detection, quoting, episodes, recovery logic |
+| `arbitrage/demo.py` | Virtual fills and CSV writers |
+| `arbitrage/models.py` | Shared types |
 
-Deeper rationale: [docs/design-notes.md](docs/design-notes.md).  
-Limits: [docs/limitations.md](docs/limitations.md).  
-Sample outcomes: [docs/findings.md](docs/findings.md), `results/sample/`.
+## Requirements
+
+- Python 3.12+
+- A Binance **Ed25519 API key id** with **no** trading or withdrawal permission
+  (needed for the SBE market-data stream). The private key is not used by this
+  project — keep it offline.
 
 ## Setup
 
@@ -84,50 +81,39 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 cp config.example.json config.json
 cp .env.example .env
-# Put BINANCE_API_KEY in .env (Ed25519 key id, no trading/withdrawal).
-# Keep the private key offline — this demo does not need it.
-# Edit strategy knobs in config.json (prefer decimal strings).
+# Set BINANCE_API_KEY in .env
+# Adjust config.json as needed (use strings for decimals)
 .venv/bin/python main.py
-# Or: .venv/bin/python main.py path/to/config.json
+# Optional: .venv/bin/python main.py path/to/config.json
 ```
 
-`main.py` prints paper fills / opportunity summaries and a market-data health
-line every few minutes. It does not dump raw depth.
+While running you should see opportunity / fill lines when something passes the
+filters, plus a market-data health line every few minutes. Raw depth is not
+printed.
 
 ### Configuration
 
-- `config.json` — strategy settings (validated by Pydantic). Start from
-  `config.example.json`. **Never** put API keys here.
-- `.env` / `BINANCE_API_KEY` — the only secret; required for the SBE stream.
+| File | Purpose |
+| --- | --- |
+| `config.json` | Strategy parameters (copy from `config.example.json`). No secrets. |
+| `.env` | `BINANCE_API_KEY` only |
 
-## Paper defaults
+Defaults are documented in `config.example.json` (starting capital, fees,
+slippage, latency, universe size, coalesce/silence limits, etc.).
 
-Defaults live in `config.example.json`. Roughly:
+## Outputs
 
-- Starting equity: 20 USDC (USDC mode) or small hub balances (hub mode)
-- Universe: quieter bridgeable alts from volume-rank ~70+; optional 4/5-leg wraps
-- Max capital per cycle: 95%
-- Simulated IOC latency: 40 ms
-- Taker fee: 0.075% per leg (fee drag scales with leg count)
-- Min net expected return: 0.05% after simulated fees
-- Max normal / recovery slippage: 0.1% / 0.5%
-- Stream silence / apply lag pause: 250 ms
-- Dirty-symbol eval coalesce: 10 ms
-- Cycle cooldown + same-route recheck before looping; recovery if inventory remains
-
-## Results
-
-Local runs write under `results/` (gitignored):
+Each local run can write under `results/` (gitignored):
 
 | File | Contents |
 | --- | --- |
-| `paper_trades.csv` | Every normal/recovery virtual fill |
-| `opportunity_episodes.csv` | Episode completion, fees, inventory |
-| `theoretical_opportunities.csv` | Fee-positive top-of-book periods |
-| `candidate_opportunities.csv` | Shadow PnL + rejection flags |
-| `big_pnl_results.csv` | Traded ops with marked / clean PnL % |
+| `paper_trades.csv` | Simulated normal and recovery fills |
+| `opportunity_episodes.csv` | Per-episode completion, fees, inventory |
+| `theoretical_opportunities.csv` | Periods where the top-of-book cycle cleared fees |
+| `candidate_opportunities.csv` | Depth/timing audits of those periods |
+| `big_pnl_results.csv` | Paper PnL for episodes that were traded in simulation |
 
-Committed examples: `results/sample/`.
+Example rows: `results/sample/`.
 
 ## Tests
 
@@ -136,18 +122,16 @@ Committed examples: `results/sample/`.
 .venv/bin/ruff check .
 ```
 
-CI runs the same checks on pushes/PRs to `main`
-(`.github/workflows/ci.yml`).
+GitHub Actions runs the same checks on `main` (`.github/workflows/ci.yml`).
 
-## Repository hygiene
+## Notes
 
-- Maintained path is **paper-only**.
-- `archive/` holds an incomplete legacy live-order script — **do not run it**.
-- Ignored: `.env`, `*.pem`, local `config.json`, `.venv`, generated `results/*`.
+- The supported entry point is paper-only (`main.py`).
+- `archive/` contains an old incomplete live-order experiment — do not run it.
+- License: [MIT](LICENSE).
 
-## CV one-liner
+## AI use
 
-> Paper-only Binance spot triangular-arb simulator: synchronized L2 books from
-> SBE depth, fee-aware route quoting, sequential IOC simulation with recovery,
-> and opportunity logging — built to study microstructure constraints, not to
-> trade live.
+Documentation in this repo was AI-generated and then human-checked. AI was also
+used to help write code and shape project structure; design choices, testing,
+and review remain human-owned.
