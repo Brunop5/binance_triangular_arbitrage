@@ -638,7 +638,6 @@ class SequentialArbitrageEngine(ABC):
     ) -> CycleResult:
         start_equity = self.portfolio_value_anchor()
         normal_fills: list[FillResult] = []
-        route_hub = self._route_hub(opportunity.route)
         current = min(
             opportunity.input_amount,
             self._route_budget(opportunity.route),
